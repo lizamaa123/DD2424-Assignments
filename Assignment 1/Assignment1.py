@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 from torch_gradient_computations import ComputeGradsWithTorch
+import matplotlib.pyplot as plt
 
 # STEP 1
 
@@ -127,7 +128,7 @@ def BackwardPass(X, Y, P, network, lam):
     #gradient wrt b
     grad_b = 1/n * np.sum(G_batch, axis=1, keepdims=True)
 
-    grads = {'W': grad_W, 'b': grad_b}
+    grads = {"W": grad_W, "b": grad_b}
     return grads
 
 
@@ -148,7 +149,6 @@ P = ApplyNetwork(X_small, small_net)
 my_grads = BackwardPass(X_small, Y_small, P, small_net, lam)
 torch_grads = ComputeGradsWithTorch(X_small, trainy[0:n_small], small_net, lam)
 
-
 def check(g_a, g_n):
     eps=1e-6
     num = np.abs(g_a - g_n)
@@ -158,12 +158,11 @@ def check(g_a, g_n):
     
     return np.max(error)
 
-error_W = check(my_grads['W'], torch_grads['W'])
-error_b = check(my_grads['b'], torch_grads['b'])
+error_W = check(my_grads["W"], torch_grads["W"])
+error_b = check(my_grads["b"], torch_grads["b"])
 
 print(f"Max error for W: {error_W}")
 print(f"Max error for b: {error_b}")
-
 
 # STEP 8
 
@@ -175,11 +174,35 @@ def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, init_net, lam, rng):
     eta = GDparams["eta"]
     n_epochs = GDparams["n_epochs"]
 
-    for _ in range(n_epochs):
+    y_train = np.argmax(Y_train, axis=0)
+    y_val = np.argmax(Y_val, axis=0)
+
+    # Useful later for plotting
+    eval = {"train_loss": [], "train_cost": [], "val_loss": [], "val_cost": []}
+
+    reg_term_init = lam * np.sum(trained_net["W"] ** 2)
+    
+    # Train data init
+    P_train_init = ApplyNetwork(X_train, trained_net)
+    train_loss_init = ComputeLoss(P_train_init, y_train)
+    eval["train_loss"].append(train_loss_init)
+    eval["train_cost"].append(train_loss_init + reg_term_init)
+    
+    # Val data init
+    P_val_init = ApplyNetwork(X_val, trained_net)
+    val_loss_init = ComputeLoss(P_val_init, y_val)
+    eval["val_loss"].append(val_loss_init)
+    eval["val_cost"].append(val_loss_init + reg_term_init)
+    
+    print(f"Epoch 0/{n_epochs} -> Train Cost: {train_loss_init + reg_term_init:.4f} and Val Cost: {val_loss_init + reg_term_init:.4f}")
+
+    for epoch in range(n_epochs):
+        # Shuffle data
         inds = rng.permutation(n)
         X_shuffled = X_train[:, inds]
         Y_shuffled = Y_train[:, inds]
         
+        # Mini-batches
         for j in range(int(n/n_batch)):
             j_start = j*n_batch
             j_end = (j+1)*n_batch
@@ -189,17 +212,100 @@ def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, init_net, lam, rng):
             Pbatch = ApplyNetwork(Xbatch, trained_net)
             grads = BackwardPass(Xbatch, Ybatch, Pbatch, trained_net, lam)
 
-            # GD update (mini-batches)
+            # GD update 
             trained_net["W"] = trained_net["W"] - eta * grads["W"]
             trained_net["b"] = trained_net["b"] - eta * grads["b"]
-
-        y_t = np.argmax(Y_train, axis=0)
-        y_v = np.argmax(Y_val, axis=0)
         
-        train_loss = ComputeLoss(Pbatch, y_t)
-        val_loss = ComputeLoss(Pbatch, y_v)
+        # L2-reg term
+        reg_term = lam * np.sum(trained_net["W"] ** 2)
+        
+        # Training data evalutation
+        P_train = ApplyNetwork(X_train, trained_net)
+        train_loss = ComputeLoss(P_train, y_train)
+        train_cost = train_loss + reg_term
 
-        print(f"training loss: {train_loss}")
-        print(f"validation loss: {val_loss}")
+        # Validation data evalutation
+        P_val = ApplyNetwork(X_val, trained_net)
+        val_loss = ComputeLoss(P_val, y_val)
+        val_cost = val_loss + reg_term
 
-    return trained_net
+        # Save evalutation
+        eval["train_loss"].append(train_loss)
+        eval["train_cost"].append(train_cost)
+        eval["val_loss"].append(val_loss)
+        eval["val_cost"].append(val_cost)
+
+        print(f"Epoch {epoch+1}/{n_epochs} -> Train Cost: {train_cost:.4f} and Val Cost: {val_cost:.4f}")
+
+    return trained_net, eval
+
+# help taken from: https://sanjanasalkar.medium.com/building-an-image-classification-model-with-cifar-10-a-complete-guide-837ff4a50775
+# https://stackoverflow.com/questions/925024/how-can-i-remove-the-top-and-right-axis
+param_settings = [
+    {"lam": 0,   "n_epochs": 40, "n_batch": 100, "eta": 0.1},
+    {"lam": 0,   "n_epochs": 40, "n_batch": 100, "eta": 0.001},
+    {"lam": 0.1, "n_epochs": 40, "n_batch": 100, "eta": 0.001},
+    {"lam": 1,   "n_epochs": 40, "n_batch": 100, "eta": 0.001}
+]
+
+for i, exp in enumerate(param_settings):
+    # Extract parameters for this iteration
+    GDparams = {"n_batch": exp["n_batch"], "eta": exp["eta"], "n_epochs": exp["n_epochs"]}
+    lam = exp["lam"]
+    
+    print(f"Running Experiment {i+1}: lam={exp["lam"]}, eta={exp["eta"]}")
+    
+    # Give the network same random seed (like assignment example)
+    rng.bit_generator.state = BitGen(42).state 
+    small_net = {}
+    small_net['W'] = .01*rng.standard_normal(size = (10, d))
+    small_net['b'] = np.zeros((10, 1))
+    
+    trained_net, eval = MiniBatchGD(trainX, trainY, valX, valY, GDparams, small_net, lam, rng)
+    
+    P_test = ApplyNetwork(testX, trained_net)
+    test_acc = ComputeAccuracy(P_test, testy)
+    print(f"Final Test Accuracy: {test_acc:.2f}%")
+    
+    # PLOTTING LOSS AND COST 
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Loss Plot
+    ax1.plot(eval["train_loss"], label="training loss", color="green")
+    ax1.plot(eval["val_loss"], label="validation loss", color="red")
+    ax1.set_title(f"Loss Curve (lam={lam}, eta={GDparams["eta"]})")
+    ax1.set_xlabel("epoch")
+    ax1.set_ylabel("loss")
+    ax1.set_xlim(left=0)
+    ax1.spines[['right', 'top']].set_visible(False)
+    ax1.legend()
+    
+    # Cost Plot
+    ax2.plot(eval["train_cost"], label="training cost", color="green")
+    ax2.plot(eval["val_cost"], label="validation cost", color="red")
+    ax2.set_title(f"Cost Curve (lam={lam}, eta={GDparams["eta"]})")
+    ax2.set_xlabel("epoch")
+    ax2.set_ylabel("loss")
+    ax2.spines[['right', 'top']].set_visible(False)
+    ax2.legend()    
+    
+    plt.savefig(f"Setting_{i+1}_Curves.png") 
+    plt.show()
+    
+    # PLOTTING WEIGHT MATRIX
+    Ws = trained_net['W'].transpose().reshape((32, 32, 3, 10), order='F')
+    W_im = np.transpose(Ws, (1, 0, 2, 3))
+    
+    fig, axes = plt.subplots(2, 5, figsize=(12, 5))
+    axes = axes.flatten()
+    
+    for j in range(10):
+        w_im = W_im[:, :, :, j]
+        w_im_norm = (w_im - np.min(w_im)) / (np.max(w_im) - np.min(w_im))
+
+        axes[j].imshow(w_im_norm)
+        
+    fig.suptitle(f"Learnt Weights (lam={lam}, eta={GDparams["eta"]})", fontsize=16)
+    
+    plt.savefig(f"Exp_{i+1}_Weights.png") 
+    plt.show()
