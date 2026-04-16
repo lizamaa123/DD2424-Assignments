@@ -209,5 +209,3 @@ print("bf diff:", np.max(np.abs(torch_grads['bf'] - my_grads['bf'])))
 print("W1 diff:", np.max(np.abs(torch_grads['W'][0] - my_grads['W'][0])))
 print("W2 diff:", np.max(np.abs(torch_grads['W'][1] - my_grads['W'][1])))
 print("F diff:", np.max(np.abs(torch_grads['F'] - my_grads['F'])))
-
-
