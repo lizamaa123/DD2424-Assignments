@@ -20,37 +20,19 @@ def LoadBatch(filename):
 
     return X, Y, y
 
-X1, Y1, y1 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_1")
-X2, Y2, y2 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_2")
-X3, Y3, y3 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_3")
-X4, Y4, y4 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_4")
-X5, Y5, y5 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_5")
-
-# Stack them all together
-X_all = np.hstack((X1, X2, X3, X4, X5))
-Y_all = np.hstack((Y1, Y2, Y3, Y4, Y5))
-y_all = np.hstack((y1, y2, y3, y4, y5))
-
-# Split into 45,000 training and 5,000 validation
-trainX = X_all[:, :-5000]
-trainY = Y_all[:, :-5000]
-trainy = y_all[:-5000]
-
-valX = X_all[:, -5000:]
-valY = Y_all[:, -5000:]
-valy = y_all[-5000:]
-
-# We still use the standalone test batch for the final test
+# Read and store data
+trainX, trainY, trainy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_1")
+valX, valY, valy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_2")
 testX, testY, testy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/test_batch")
 
-# Preprocess input data based on the NEW 45k training set
 d = trainX.shape[0]
-m = 50
-K = 10
+K = trainY.shape[0] 
 
+# Preprocess input data 
 mean_X = np.mean(trainX, axis=1).reshape(d, 1)
 std_X = np.std(trainX, axis=1).reshape(d, 1)
 
+# Normalize
 trainX = (trainX - mean_X) / std_X
 valX = (valX - mean_X) / std_X
 testX = (testX - mean_X) / std_X
@@ -101,6 +83,10 @@ P, fp_data = ApplyNetwork(trainX[:, 0:100], net_params)
 print(P.shape) 
 
 def ComputeAccuracy(P,y):
+    """P=Kxn
+    y=len(n)
+    acc=scalar
+    """
     # indices of max val.
     predictions = np.argmax(P, axis=0) 
     
@@ -109,12 +95,19 @@ def ComputeAccuracy(P,y):
     return acc
 
 def ComputeLoss(P, y):
+    """P=Kxn
+    y=1xn
+    L=scalar, 1x1 = mean cross entropy loss"""
     n = P.shape[1]
     L = -np.mean(np.log(P[y, np.arange(n)]))
     
     return L
 
 def BackwardPass(X, Y, fp_data, network, lam):
+    """X=dxn
+    Y=Kxn
+    P=Kxn
+    grads=dictionary with keys W1, W2 and b1, b2."""
     s1 = fp_data["s1"]
     h = fp_data["h"]
     P = fp_data["P"]
@@ -124,13 +117,14 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
     n = X.shape[1]
 
+    # From LECTURE 4
     # Layer 2
     G_batch = P - Y
 
     grad_W2 = 1/n * np.dot(G_batch, h.T) + 2 * lam * W2
     grad_b2 = 1/n * np.sum(G_batch, axis=1, keepdims=True)
 
-    # Backpropogate to Layer 1
+    # Backpropogate to first layer
     G_batch = np.dot(W2.T, G_batch)
     G_batch = G_batch * (s1 > 0)
 
@@ -141,7 +135,6 @@ def BackwardPass(X, Y, fp_data, network, lam):
 
     return grads
 
-"""
 # CHECK
 
 d_small = 5
@@ -177,8 +170,8 @@ print(f"Max error for b1: {error_b1}")
 print(f"Max error for W2: {error_W2}")
 print(f"Max error for b2: {error_b2}")
 
-# SANITY CHECK, overfit to 100 examples
-print("Sanity Check")
+# SANITY CHECK (overfit to 100 examples)
+print("SANITY CHECK")
 sanity_net = Initialization(m, d, K=10, seed=42)
 
 X_sanity = trainX[:, 0:100]
@@ -208,7 +201,7 @@ for epoch in range(n_epochs):
     
     sanity_net["W"][1] -= eta * grads["W"][1]
     sanity_net["b"][1] -= eta * grads["b"][1]
-"""
+
 
 # EXERCISE 3
 
@@ -225,7 +218,7 @@ def ComputeEta(t, n_s, eta_min, eta_max):
         
     return eta_t
 
-def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, network, lam):
+def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, network, lam, rng):
     trained_net = copy.deepcopy(network)
     
     n = X_train.shape[1]
@@ -245,21 +238,23 @@ def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, network, lam):
     eval = {"train_loss": [], "train_cost": [], "train_acc": [], "val_loss": [], "val_cost": [], "val_acc": [], "update_steps": []}
     
     for epoch in range(n_epochs):
+        inds = rng.permutation(n)
+        X_shuffled = X_train[:, inds]
+        Y_shuffled = Y_train[:, inds]
 
         # Mini-batches
         for j in range(int(n/n_batch)):
             j_start = j*n_batch
             j_end = (j+1)*n_batch
+            Xbatch = X_shuffled[:, j_start:j_end]
+            Ybatch = Y_shuffled[:, j_start:j_end]
 
-            Xbatch = X_train[:, j_start:j_end]
-            Ybatch = Y_train[:, j_start:j_end]
-
-            Pbatch, fp_data = ApplyNetwork(Xbatch, trained_net)
+            _, fp_data = ApplyNetwork(Xbatch, trained_net)
             grads = BackwardPass(Xbatch, Ybatch, fp_data, trained_net, lam)
 
             eta_t = ComputeEta(t, n_s, eta_min, eta_max)
 
-            # GD update 
+            # GD update, Eq. (10) and (11)
             trained_net["W"][0] -= eta_t * grads["W"][0]
             trained_net["b"][0] -= eta_t * grads["b"][0]
             trained_net["W"][1] -= eta_t * grads["W"][1]
@@ -276,7 +271,7 @@ def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, network, lam):
                 val_acc = ComputeAccuracy(P_val, y_val)
                 val_loss = ComputeLoss(P_val, y_val)
                 
-                # Calculate Cost (Loss + L2 Regularization for both layers)
+                # Calculate Cost (Loss + L2 Regularization for both layers -> from figure b) in ass.)
                 l2_reg = lam * (np.sum(trained_net["W"][0]**2) + np.sum(trained_net["W"][1]**2))
                 
                 eval["train_loss"].append(train_loss)
@@ -295,162 +290,153 @@ def MiniBatchGD(X_train, Y_train, X_val, Y_val, GDparams, network, lam):
 
     return trained_net, eval
 
-GDparams = {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 500, "n_epochs": 10}
-lam = 0.01
-m = 50
-net_params = Initialization(m, d, K=10, seed=42)
-trained_net, eval = MiniBatchGD(trainX, trainY, valX, valY, GDparams, net_params, lam)
+# helper function to avoid repetition. Plots cost,loss and accuracy
+def plot_results(metrics, lam, filename):
+    steps = metrics["update_steps"]
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
 
-P_test, _ = ApplyNetwork(testX, trained_net)
-test_acc = ComputeAccuracy(P_test, testy) 
-print(f"Final Test Accuracy: {test_acc:.2f}%")
+    # Cost Plot
+    ax1.plot(steps, metrics["train_cost"], label="training", color="green")
+    ax1.plot(steps, metrics["val_cost"], label="validation", color="red")
+    ax1.set_title(f"Cost plot (lam={lam})")
+    ax1.set_xlabel("update step")
+    ax1.set_ylabel("cost")
+    ax1.set_xlim(left=0)
+    ax1.spines[['right', 'top']].set_visible(False)
+    ax1.legend()
 
-steps = eval["update_steps"]
+    # Loss Plot
+    ax2.plot(steps, metrics["train_loss"], label="training", color="green")
+    ax2.plot(steps, metrics["val_loss"], label="validation", color="red")
+    ax2.set_title(f"Loss plot (lam={lam})")
+    ax2.set_xlabel("update step")
+    ax2.set_ylabel("loss")
+    ax2.set_xlim(left=0)
+    ax2.spines[['right', 'top']].set_visible(False)
+    ax2.legend()
 
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
+    # Accuracy Plot
+    ax3.plot(steps, metrics["train_acc"], label="training", color="green")
+    ax3.plot(steps, metrics["val_acc"], label="validation", color="red")
+    ax3.set_title(f"Accuracy plot (lam={lam})")
+    ax3.set_xlabel("update step")
+    ax3.set_ylabel("accuracy")
+    ax3.set_xlim(left=0)
+    ax3.spines[['right', 'top']].set_visible(False)
+    ax3.legend()
 
-# Cost Plot
-ax1.plot(steps, eval["train_cost"], label="training", color="green")
-ax1.plot(steps, eval["val_cost"], label="validation", color="red")
-ax1.set_title("Cost plot")
-ax1.set_xlabel("update step")
-ax1.set_ylabel("cost")
-ax1.spines[['right', 'top']].set_visible(False)
-ax1.legend()
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.show()
 
-# Loss Plot
-ax2.plot(steps, eval["train_loss"], label="training", color="green")
-ax2.plot(steps, eval["val_loss"], label="validation", color="red")
-ax2.set_title("Loss plot")
-ax2.set_xlabel("update step")
-ax2.set_ylabel("loss")
-ax2.spines[['right', 'top']].set_visible(False)
-ax2.legend()
+# also EXERCISE 4
+# epoch nr = 3 cycles * (1600 steps/cycle) / 100 steps per epoch = 48
+param_settings = [
+    {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 500, "n_epochs": 10},
+    {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 48}
+]
 
-# Accuracy Plot
-ax3.plot(steps, eval["train_acc"], label="training", color="green")
-ax3.plot(steps, eval["val_acc"], label="validation", color="red")
-ax3.set_title("Accuracy plot")
-ax3.set_xlabel("update step")
-ax3.set_ylabel("accuracy")
-ax3.spines[['right', 'top']].set_visible(False)
-ax3.legend()
+for i, exp in enumerate(param_settings):
+    GDparams = {"n_batch": exp["n_batch"], "eta_min": exp["eta_min"], "eta_max": exp["eta_max"], "n_s": exp["n_s"], "n_epochs": exp["n_epochs"]}
+    lam = 0.01
+    m = 50
+    net_params = Initialization(m, d, K=10, seed=42)
+    rng = np.random.default_rng(42)
+    trained_net, eval = MiniBatchGD(trainX, trainY, valX, valY, GDparams, net_params, lam, rng)
 
-plt.tight_layout()
-plt.savefig("Exercise3_Curves.png")
-plt.show()
+    P_test, _ = ApplyNetwork(testX, trained_net)
+    test_acc = ComputeAccuracy(P_test, testy) 
+    print(f"Final Test Accuracy (figure {i+3}): {test_acc:.2f}%")
 
-# EXERCISE 4
-# epoch nr = 3 cycles * (1600 steps/cycle) / 100 steps per epoch 
+    plot_results(eval, lam, f"Exercise_{i+3}_Curves.png")
 
-GDparams = {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 48}
-lam = 0.01
-m = 50
-net_params = Initialization(m, d, K=10, seed=42)
 
-trained_net, metrics = MiniBatchGD(trainX, trainY, valX, valY, GDparams, net_params, lam)
+# Loading all 5 batches (test batch remains the same)
+print("Loading 5 training batches for Searches")
 
-P_test, _ = ApplyNetwork(testX, trained_net)
-test_acc = ComputeAccuracy(P_test, testy) 
-print(f"Final Test Accuracy (3 Cycles): {test_acc:.2f}%")
+X1, Y1, y1 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_1")
+X2, Y2, y2 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_2")
+X3, Y3, y3 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_3")
+X4, Y4, y4 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_4")
+X5, Y5, y5 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_5")
+testX, testY, testy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/test_batch")
 
-# PLOTT
-steps = metrics["update_steps"]
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
+X_all = np.hstack((X1, X2, X3, X4, X5))
+Y_all = np.hstack((Y1, Y2, Y3, Y4, Y5))
+y_all = np.hstack((y1, y2, y3, y4, y5))
 
-ax1.plot(steps, metrics["train_cost"], label="training", color="green")
-ax1.plot(steps, metrics["val_cost"], label="validation", color="red")
-ax1.set_title("Cost plot")
-ax1.set_xlabel("update step")
-ax1.set_ylabel("cost")
-ax1.set_xlim(left=0)
-ax1.spines[['right', 'top']].set_visible(False)
-ax1.legend()
+# 45k and 5k train/val split
+trainX = X_all[:, :-5000]
+trainY = Y_all[:, :-5000]
+trainy = y_all[:-5000]
 
-ax2.plot(steps, metrics["train_loss"], label="training", color="green")
-ax2.plot(steps, metrics["val_loss"], label="validation", color="red")
-ax2.set_title("Loss plot")
-ax2.set_xlabel("update step")
-ax2.set_ylabel("loss")
-ax2.set_xlim(left=0)
-ax2.spines[['right', 'top']].set_visible(False)
-ax2.legend()
+valX = X_all[:, -5000:]
+valY = Y_all[:, -5000:]
+valy = y_all[-5000:]
 
-ax3.plot(steps, metrics["train_acc"], label="training", color="green")
-ax3.plot(steps, metrics["val_acc"], label="validation", color="red")
-ax3.set_title("Accuracy plot")
-ax3.set_xlabel("update step")
-ax3.set_ylabel("accuracy")
-ax3.set_xlim(left=0)
-ax3.spines[['right', 'top']].set_visible(False)
-ax3.legend()
+d = trainX.shape[0]
+mean_X = np.mean(trainX, axis=1).reshape(d, 1)
+std_X = np.std(trainX, axis=1).reshape(d, 1)
 
-plt.tight_layout()
-plt.savefig("Exercise4_Fig4.png")
-plt.show()
+# Normalize
+trainX = (trainX - mean_X) / std_X
+valX = (valX - mean_X) / std_X
+testX = (testX - mean_X) / std_X
 
-l_min = -5
-l_max = -1
-num_searches = 8
-
+# FIRST SEARCH:
 # n_s = 2 * (45000 / 100) = 900
 # 2 cycles = 4 * n_s = 3600 steps. 3600 steps / 450 batches per epoch = 8 epochs
-GDparams = {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 900, "n_epochs": 8}
 
-with open("coarse_search_results.txt", "w") as f:
-    f.write("l_value, lam, val_accuracy\n")
-    
-    for i in range(num_searches):
-        # Generate a random lambda on a log scale
-        l = l_min + (l_max - l_min) * np.random.rand()
-        lam = 10**l
-        
-        print(f"Search {i+1}/{num_searches} | l = {l:.4f} | lam = {lam:.5f}")
-        
-        # Initialize a new network
-        net_params = Initialization(m, d, K=10, seed=None) 
-        
-        # Train for 2 cycles
-        trained_net, metrics = MiniBatchGD(trainX, trainY, valX, valY, GDparams, net_params, lam)
-        
-        best_val_acc = max(metrics["val_acc"])
-        print(f"Best Validation Accuracy: {best_val_acc:.2f}%")
-        
-        # Save to file
-        f.write(f"{l:.4f}, {lam:.5f}, {best_val_acc:.2f}\n")
-
-print("\n Coarse Search Complete, check coarse_search_results.txt")
-
-l_min = -5.0
-l_max = -3.0
-num_searches = 8
-
+# SECOND SEARCH:
 # n_s = 900. 3 cycles = 6 * n_s = 5400 steps
 # 5400 steps / 450 batches per epoch = 12 epochs
-GDparams_fine = {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 900, "n_epochs": 12}
 
-with open("fine_search_results.txt", "w") as f:
-    f.write("l_value, lam, val_accuracy\n")
+param_settings = [
+    {"l_min": -5.0, "l_max": -1.0, "num_searches": 8, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 900, "n_epochs": 8},
+    {"l_min": -5.0, "l_max": -3.0, "num_searches": 8, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 900, "n_epochs": 12},
+]
+
+for i, exp in enumerate(param_settings):
+    GDparams = {"n_batch": exp["n_batch"], "eta_min": exp["eta_min"], "eta_max": exp["eta_max"], "n_s": exp["n_s"], "n_epochs": exp["n_epochs"]}
+    l_min = exp["l_min"]
+    l_max = exp["l_max"]
+    num_searches = exp["num_searches"]
     
-    for i in range(num_searches):
-        l = l_min + (l_max - l_min) * np.random.rand()
-        lam = 10**l
-        
-        print(f"Fine Search {i+1}/{num_searches} | l = {l:.4f} | lam = {lam:.5f}")
-        
-        net_params = Initialization(m, d, K=10, seed=None) 
-        
-        trained_net, metrics = MiniBatchGD(trainX, trainY, valX, valY, GDparams_fine, net_params, lam)
-        
-        best_val_acc = max(metrics["val_acc"])
-        print(f"Best Validation Accuracy: {best_val_acc:.2f}%")
-        
-        # Save to file
-        f.write(f"{l:.4f}, {lam:.5f}, {best_val_acc:.2f}\n")
+    if i == 0:
+        filename = "coarse_search_results.txt"
+        search_type = "Coarse"
+    elif i == 1:
+        filename = "fine_search_results.txt"
+        search_type = "Fine"
+    
+    with open(filename, "w") as f:
+        f.write("l_value, lam, val_accuracy\n")
+    
+        for j in range(num_searches):
+            # Generate a random lambda on a log scale
+            l = l_min + (l_max - l_min) * np.random.rand()
+            lam = 10**l
+            
+            print(f"{search_type} Search {j+1}/{num_searches} | l = {l:.4f} | lam = {lam:.5f}")
+            
+            # Initialize a new network
+            net_params = Initialization(m, d, K=10, seed=None) 
+            rng = np.random.default_rng(42)
+            
+            # Train for 2 cycles
+            trained_net, metrics = MiniBatchGD(trainX, trainY, valX, valY, GDparams, net_params, lam, rng)
+            
+            best_val_acc = max(metrics["val_acc"])
+            print(f"Best Validation Accuracy: {best_val_acc:.2f}%")
+            
+            # Save to file
+            f.write(f"{l:.4f}, {lam:.5f}, {best_val_acc:.2f}\n")
 
-print("Fine Search Complete! Check fine_search_results.txt")
+        print(f"{search_type} Search complete, check {filename}")
 
-# Re-split the data to 49k Train / 1k Validation
+# Resplit data to 49k/1k train/val split (test batch remains the same)
+testX, testY, testy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/test_batch")
+
 trainX = X_all[:, :-1000]
 trainY = Y_all[:, :-1000]
 trainy = y_all[:-1000]
@@ -459,65 +445,31 @@ valX = X_all[:, -1000:]
 valY = Y_all[:, -1000:]
 valy = y_all[-1000:]
 
-# Re-calculate Mean and Std based on the NEW 49k training set
 d = trainX.shape[0]
 mean_X = np.mean(trainX, axis=1).reshape(d, 1)
 std_X = np.std(trainX, axis=1).reshape(d, 1)
-
-testX, testY, testy = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/test_batch")
 
 trainX = (trainX - mean_X) / std_X
 valX = (valX - mean_X) / std_X
 testX = (testX - mean_X) / std_X
 
+# FINAL SEARCH
 # n_s = 2 * (49000 / 100) = 980
 # 3 cycles = 6 * n_s = 5880 update steps. 
 # 5880 steps / 490 batches per epoch = 12 epochs.
 GDparams_final = {"n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 980, "n_epochs": 12}
 
 # The winning lambda from the search
-lam = 0.00003 
+lam = 0.00047 
 m = 50
 net_params = Initialization(m, d, K=10, seed=42)
+rng = np.random.default_rng(42)
 
-trained_net, metrics = MiniBatchGD(trainX, trainY, valX, valY, GDparams_final, net_params, lam)
+trained_net, eval = MiniBatchGD(trainX, trainY, valX, valY, GDparams_final, net_params, lam, rng)
 
 # Evaluate Final Test Accuracy
 P_test, _ = ApplyNetwork(testX, trained_net)
 test_acc = ComputeAccuracy(P_test, testy) 
-print(f"ULTIMATE FINAL TEST ACCURACY: {test_acc:.2f}%")
+print(f"!!!FINAL TEST ACCURACY!!!: {test_acc:.2f}%")
 
-# Plotting the Final Curves
-steps = metrics["update_steps"]
-fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
-
-ax1.plot(steps, metrics["train_cost"], label="training", color="green")
-ax1.plot(steps, metrics["val_cost"], label="validation", color="red")
-ax1.set_title(f"Cost plot (lam={lam})")
-ax1.set_xlabel("update step")
-ax1.set_ylabel("cost")
-ax1.set_xlim(left=0)
-ax1.spines[['right', 'top']].set_visible(False)
-ax1.legend()
-
-ax2.plot(steps, metrics["train_loss"], label="training", color="green")
-ax2.plot(steps, metrics["val_loss"], label="validation", color="red")
-ax2.set_title(f"Loss plot (lam={lam})")
-ax2.set_xlabel("update step")
-ax2.set_ylabel("loss")
-ax2.set_xlim(left=0)
-ax2.spines[['right', 'top']].set_visible(False)
-ax2.legend()
-
-ax3.plot(steps, metrics["train_acc"], label="training", color="green")
-ax3.plot(steps, metrics["val_acc"], label="validation", color="red")
-ax3.set_title(f"Accuracy plot (lam={lam})")
-ax3.set_xlabel("update step")
-ax3.set_ylabel("accuracy")
-ax3.set_xlim(left=0)
-ax3.spines[['right', 'top']].set_visible(False)
-ax3.legend()
-
-plt.tight_layout()
-plt.savefig("Exercise4_FinalRun.png")
-plt.show()
+plot_results(eval, lam, f"Exercise4_FinalRun.png")
