@@ -266,15 +266,22 @@ valX = (valX - mean_X) / std_X
 testX = (testX - mean_X) / std_X
 
 def ComputeEta(t, n_s, eta_min, eta_max):
-    l = int(t / (2 * n_s))
+    t_init = 0
     
-    # Eq. (14)
-    if (2 * l * n_s) <= t <= ((2 * l + 1) * n_s):
-        eta_t = eta_min + ((t - 2 * l * n_s) / n_s) * (eta_max - eta_min)
-        
-    # Eq. (15)
-    elif ((2 * l + 1) * n_s) <= t <= (2 * (l + 1) * n_s):
-        eta_t = eta_max - ((t - (2 * l + 1) * n_s) / n_s) * (eta_max - eta_min)
+    while t >= t_init + (2 * n_s):
+        # moving our initial step to the end of cycle
+        t_init += 2 * n_s  
+        # dobling the step size (Eq. 25)
+        n_s *= 2            
+    
+    # where we are in the cycle
+    t_cycle = t - t_init
+    # first half of the cycle
+    if t_cycle <= n_s:
+        eta_t = eta_min + (t_cycle / n_s) * (eta_max - eta_min)
+    # second half of the cycle
+    else:
+        eta_t = eta_max - ((t_cycle - n_s) / n_s) * (eta_max - eta_min)
         
     return eta_t
 
@@ -366,29 +373,34 @@ def MiniBatchGD(MX_train, Y_train, MX_val, Y_val, GDparams, network, lam, rng):
 
             if t % eval_step == 0:
                 # Evaluate training data 
-                P_train, _ = ForwardPass(MX_train, trained_net)
-                train_acc = ComputeAccuracy(P_train, y_train)
-                train_loss = ComputeLoss(P_train, y_train)
+                # using 5000 images as chunk (exercise 3)
+                chunk_size = 5000
+                MX_train_eval = MX_train[:, :, :chunk_size]
+                y_train_eval = y_train[:chunk_size]
+
+                P_train, _ = ForwardPass(MX_train_eval, trained_net)
+                #train_acc = ComputeAccuracy(P_train, y_train)
+                train_loss = ComputeLoss(P_train, y_train_eval)
                 
                 #  Evaluate validation data 
                 P_val, _ = ForwardPass(MX_val, trained_net)
-                val_acc = ComputeAccuracy(P_val, y_val)
+                #val_acc = ComputeAccuracy(P_val, y_val)
                 val_loss = ComputeLoss(P_val, y_val)
                 
                 # Calculate Cost (Loss + L2 Regularization for both layers -> from figure b) in ass.)
                 l2_reg = lam * (np.sum(trained_net["W"][0]**2) + np.sum(trained_net["W"][1]**2))
                 
                 eval["train_loss"].append(train_loss)
-                eval["train_cost"].append(train_loss + l2_reg)
-                eval["train_acc"].append(train_acc)
+                #eval["train_cost"].append(train_loss + l2_reg)
+                #eval["train_acc"].append(train_acc)
                 
                 eval["val_loss"].append(val_loss)
-                eval["val_cost"].append(val_loss + l2_reg)
-                eval["val_acc"].append(val_acc)
+                #eval["val_cost"].append(val_loss + l2_reg)
+                #eval["val_acc"].append(val_acc)
                 
                 eval["update_steps"].append(t)
                 
-                print(f"Step {t} | Train Acc: {train_acc:.2f}% | Val Acc: {val_acc:.2f}% | eta: {eta_t:.5f}")
+                print(f"Step {t} | Train Loss: {train_loss:.2f}% | Val Loss: {val_loss:.2f}% | eta: {eta_t:.5f}")
 
             t += 1
 
@@ -453,7 +465,7 @@ def ComputeMX(X, f):
 
                 l += 1
     return MX
-
+"""
 # 3 cycles = 6 * n_s = 4800 update steps
 # 4800 steps / (49k/100) batches per epoch = int(9.8) = 10 epochs
 param_settings = [
@@ -519,3 +531,55 @@ ax2.set_ylabel("Time (seconds)")
 plt.tight_layout()
 plt.savefig("Ass3_Ex3_BarCharts.png")
 plt.show()
+"""
+def plot_loss(metrics, lam, filename):
+    steps = metrics["update_steps"]
+    plt.figure(figsize=(8, 5))
+    plt.plot(steps, metrics["train_loss"], label="training loss", color="green")
+    plt.plot(steps, metrics["val_loss"], label="validation loss", color="red")
+    plt.title(f"Loss plot (lam={lam})")
+    plt.xlabel("update step")
+    plt.ylabel("loss")
+    plt.xlim(left=0)
+    plt.gca().spines[['right', 'top']].set_visible(False)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
+# 3 cycles with doubling lengths (2*800=1600) + (2*1600=3200) + (3200*2=6400) = 11200
+# 11200 steps / 490 batches per epoch = int(22.85) = 23 epochs
+
+param_settings = [
+    {"f": 4, "nf": 10, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
+    {"f": 8, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
+    {"f": 4, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23}
+    ]
+
+for i, exp in enumerate(param_settings):
+    GDparams = {"n_batch": exp["n_batch"], "eta_min": exp["eta_min"], "eta_max": exp["eta_max"], "n_s": exp["n_s"], "n_epochs": exp["n_epochs"]}
+    f = exp["f"]
+    nf = exp["nf"]
+    nh = exp["nh"]
+    lam = exp["lam"]
+    
+    MX_train = ComputeMX(trainX, f)
+    MX_val = ComputeMX(valX, f)
+
+    net_params = Initialization(f, nf, nh)
+    rng = np.random.default_rng(42)
+    
+    start_time = time.time()
+    trained_net, metrics = MiniBatchGD(MX_train, trainY, MX_val, valY, GDparams, net_params, lam, rng)
+    end_time = time.time()
+    
+    print(f"Time: {(end_time - start_time):.2f} s")
+
+    MX_test = ComputeMX(testX, f)
+    P_test, _ = ForwardPass(MX_test, trained_net)
+    test_acc = ComputeAccuracy(P_test, testy)
+
+    print(f"!!!FINAL TEST ACCURACY: {test_acc:.2f}%!!!")
+
+    # Generate and save the requested Loss Curve
+    plot_loss(metrics, lam, f"Ass3_LongRun_f{f}_nf{nf}.png")
