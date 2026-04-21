@@ -549,11 +549,12 @@ def plot_loss(metrics, lam, filename):
 
 # 3 cycles with doubling lengths (2*800=1600) + (2*1600=3200) + (3200*2=6400) = 11200
 # 11200 steps / 490 batches per epoch = int(22.85) = 23 epochs
-
+"""
 param_settings = [
     {"f": 4, "nf": 10, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
     {"f": 8, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
-    {"f": 4, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23}
+    {"f": 4, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
+    {"f": 4, "nf": 40, "nh": 300, "lam": 0.0025, "n_cycles": 4, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23}
     ]
 
 for i, exp in enumerate(param_settings):
@@ -570,7 +571,7 @@ for i, exp in enumerate(param_settings):
     rng = np.random.default_rng(42)
     
     start_time = time.time()
-    trained_net, metrics = MiniBatchGD(MX_train, trainY, MX_val, valY, GDparams, net_params, lam, rng)
+    trained_net, eval = MiniBatchGD(MX_train, trainY, MX_val, valY, GDparams, net_params, lam, rng)
     end_time = time.time()
     
     print(f"Time: {(end_time - start_time):.2f} s")
@@ -582,4 +583,54 @@ for i, exp in enumerate(param_settings):
     print(f"!!!FINAL TEST ACCURACY: {test_acc:.2f}%!!!")
 
     # Generate and save the requested Loss Curve
-    plot_loss(metrics, lam, f"Ass3_LongRun_f{f}_nf{nf}.png")
+    plot_loss(eval, lam, f"Ass3_LongRun_f{f}_nf{nf}.png")
+"""
+# !!!
+# EXERCISE 4
+# !!!
+
+# 4 cycles with doubling lengths  = 24000
+# 24000 steps / 490 batches per epoch = int(48.97) = 49 epochs
+
+param_settings = [
+    {"f": 4, "nf": 40, "nh": 300, "lam": 0.0025, "n_cycles": 4, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 49, "smoothing": False, "label": "no smoothing"},
+    {"f": 4, "nf": 40, "nh": 300, "lam": 0.0025, "n_cycles": 4, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 49, "smoothing": True, "label": "smoothing"}
+]
+epsilon = 0.1
+K = 10
+trainY_smoothed = trainY * (1 - epsilon) + (1 - trainY) * (epsilon / (K - 1))
+
+# f = 4 (outside loop)
+MX_train = ComputeMX(trainX, 4)
+MX_val = ComputeMX(valX, 4)
+MX_test = ComputeMX(testX, 4)
+
+for i, exp in enumerate(param_settings):
+    GDparams = {"n_batch": exp["n_batch"], "eta_min": exp["eta_min"], "eta_max": exp["eta_max"], "n_s": exp["n_s"], "n_epochs": exp["n_epochs"]}
+    f = exp["f"]
+    nf = exp["nf"]
+    nh = exp["nh"]
+    lam = exp["lam"]
+
+    if exp["smoothing"]:
+        current_trainY = trainY_smoothed
+        file_name = "Smoothed"
+    else:
+        current_trainY = trainY
+        file_name = "Standard"
+
+    net_params = Initialization(f, nf, nh)
+    rng = np.random.default_rng(42)
+
+    start_time = time.time()
+    trained_net, eval = MiniBatchGD(MX_train, current_trainY, MX_val, valY, GDparams, net_params, lam, rng)
+    end_time = time.time()
+
+    print(f"Time: {(end_time - start_time):.2f} s")
+
+    P_test, _ = ForwardPass(MX_test, trained_net)
+    test_acc_std = ComputeAccuracy(P_test, testy)
+    
+    print(f"!!!FINAL TEST ACCURACY: {test_acc_std:.2f}%!!!")
+    
+    plot_loss(eval, lam, f"Ass3_Ex4_{file_name}.png")
