@@ -457,8 +457,16 @@ def ComputeMX(X, f):
 # 3 cycles = 6 * n_s = 4800 update steps
 # 4800 steps / (49k/100) batches per epoch = int(9.8) = 10 epochs
 param_settings = [
-    {"f": 4, "nf": 10, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 10}
+    {"f": 2, "nf": 3, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 10},
+    {"f": 4, "nf": 10, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 10},
+    {"f": 8, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 10},
+    {"f": 16, "nf": 160, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 10}
 ]
+
+# Trackers for bar charts
+arch_labels = []
+final_accuracies = []
+training_times = []
 
 for i, exp in enumerate(param_settings):
     GDparams = {"n_batch": exp["n_batch"], "eta_min": exp["eta_min"], "eta_max": exp["eta_max"], "n_s": exp["n_s"], "n_epochs": exp["n_epochs"]}
@@ -482,10 +490,32 @@ for i, exp in enumerate(param_settings):
     training_time = end_time - start_time
     print(f"Time: {training_time:.2f} s")
 
+    print(f"Computing MX_test")
     MX_test = ComputeMX(testX, f)
     P_test, _ = ForwardPass(MX_test, trained_net)
     test_acc = ComputeAccuracy(P_test, testy)
 
     print(f"!!!FINAL TEST ACCURACY!!!: {test_acc:.2f}%")
 
-    plot_results(eval, lam, f"Ass3_Ex3.png")
+    #plot_results(eval, lam, f"Ass3_Ex3_f{f}_nf{nf}.png")
+
+    # Storing data for bar charts
+    arch_labels.append(f"f={f}\nnf={nf}")
+    final_accuracies.append(test_acc)
+    training_times.append(training_time)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+# Test Accuracy
+ax1.bar(arch_labels, final_accuracies)
+ax1.set_title("Final Test Accuracy by Architecture nr")
+ax1.set_ylabel("Accuracy (%)")
+ax1.set_ylim(0, 100)
+
+# Training time
+ax2.bar(arch_labels, training_times)
+ax2.set_title("Training Time by Architecture nr")
+ax2.set_ylabel("Time (seconds)")
+
+plt.tight_layout()
+plt.savefig("Ass3_Ex3_BarCharts.png")
+plt.show()
