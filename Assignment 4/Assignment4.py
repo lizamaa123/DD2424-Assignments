@@ -1,5 +1,6 @@
 import numpy as np
 from torch_gradient_computations_column_wise import ComputeGradsWithTorch
+import matplotlib.pyplot as plt
 
 # !!!
 # EXERCISE 1
@@ -31,7 +32,7 @@ for i, char in enumerate(unique_chars):
 
 print(f"Number of unique characters, K={K}")
 
-def Initialization(m, K, seed):
+def Initialization(m, K, seed=42):
     RNN = {}
     rng = np.random.default_rng(seed)
 
@@ -121,11 +122,12 @@ def forwardPass(X, Y, RNN, h0):
         P[:, t:t+1] = p
         
         # Eq. 5
-        loss += np.log(np.dot(y.T, p)[0, 0])
-        loss = loss / n
+        loss += -np.log(np.dot(y.T, p)[0, 0])
         
         # update h
         h = h
+    
+    loss = loss / n
         
     return loss, P, H, A, h
 
@@ -191,7 +193,7 @@ Y = onehotChar(Y_chars, char_to_ind, K)
 # Initializing
 m_check = 10
 h0_check = np.zeros((m_check, 1))
-RNN_check = Initialization(m_check, K, seed=42)
+RNN_check = Initialization(m_check, K)
 
 # My gradients
 loss, my_P, my_H, my_A, my_h = forwardPass(X, Y, RNN_check, h0_check)
@@ -205,3 +207,107 @@ pytorch_grads = ComputeGradsWithTorch(X, y_int, h0_check, RNN_check)
 for key in my_grads.keys():
     diff = np.max(np.abs(my_grads[key] - pytorch_grads[key]))
     print(f"Maximum difference for {key}: {diff}")
+
+RNN = Initialization(m, K)
+
+m_adam = {}
+v_adam = {}
+for i, j in RNN.items():
+    m_adam[i] = np.zeros_like(j)
+    v_adam[i] = np.zeros_like(j)
+
+def adamAlgo(RNN, grads, m_adam, v_adam, t, eta=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    for k in RNN.keys():
+        # Eq. 6-10
+        m_adam[k] = beta1 * m_adam[k] + (1 - beta1) * grads[k]
+        v_adam[k] = beta2 * v_adam[k] + (1 - beta2) * (grads[k] ** 2)
+        
+        mhat = m_adam[k] / (1 - beta1 ** t)
+        vhat = v_adam[k] / (1 - beta2 ** t)
+        
+        RNN[k] -= (eta / (np.sqrt(vhat) + epsilon)) * mhat
+        
+    return RNN, m_adam, v_adam
+
+# Initializing variables
+hprev = np.zeros((m, 1))
+smooth_loss = 0
+e = 0
+steps = 100000 
+
+step_history = []
+smooth_loss_history = []
+RNN_80k = None
+
+print("TRAINING STARTING")
+for step in range(1, steps + 1):
+    # extracting the current chunk of text
+    X_chars = book_data[e:e+seq_length] # input
+    Y_chars = book_data[e+1:e+seq_length+1] # labels
+    
+    # converting to one-hot matrices using helper method
+    X = onehotChar(X_chars, char_to_ind, K)
+    Y = onehotChar(Y_chars, char_to_ind, K)
+    
+    # forward + backward pass
+    loss, P, H, A, h_final = forwardPass(X, Y, RNN, hprev)
+    grads = backwardPass(RNN, X, Y, P, H, A, hprev)
+    
+    # now updating weights using adam
+    RNN, m_adam, v_adam = adamAlgo(RNN, grads, m_adam, v_adam, step)
+    hprev = h_final
+    
+    # smooth loss
+    smooth_loss = 0.999 * smooth_loss + 0.001 * loss
+
+    # Save loss history for the graph every 100 steps
+    if step % 100 == 0:
+        step_history.append(step)
+        smooth_loss_history.append(smooth_loss)
+
+        # Capture the exact weights at step 80,000!
+    if step == 80000:
+        RNN_80k = {k: np.copy(v) for k, v in RNN.items()}
+    
+    if step % 10000 == 0 or step == 1:
+        print(f"Step: {step} | Smooth Loss: {smooth_loss:.4f}")
+        
+        # synthesizing n=200 char. from current hidden state and first character of X
+        x0 = X[:, 0:1] 
+        Y_synth = seqSynth(RNN, hprev, x0, 200)
+        
+        # Re-convert to text 
+        synth_text = ""
+        for t in range(Y_synth.shape[1]):
+            char_index = np.argmax(Y_synth[:, t])
+            synth_text += ind_to_char[char_index]
+            
+        print(synth_text)
+        
+    e += seq_length
+
+    if e > len(book_data) - seq_length - 1:
+        e = 0
+        hprev = np.zeros((m, 1))
+
+plt.plot(step_history, smooth_loss_history, color='blue', linewidth=1)
+plt.title('Smooth Loss over 100,000 Update Steps')
+plt.xlabel('Update Step')
+plt.ylabel('Smooth Loss')
+plt.grid(True)
+plt.savefig('smooth_loss_graph.png') 
+plt.show()
+
+# best model found at 80k step with smallest loss
+h0_final = np.zeros((m, 1))
+x0_final = onehotChar(book_data[0:1], char_to_ind, K)
+
+# Pass RNN_80k into the synthesis function instead of the final 100k RNN
+Y_synth_final = seqSynth(RNN_80k, h0_final, x0_final, 1000)
+
+final_text = ""
+for t in range(Y_synth_final.shape[1]):
+    char_index = np.argmax(Y_synth_final[:, t])
+    final_text += ind_to_char[char_index]
+print("!!! 10k character model!!!")
+print(final_text)
