@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 # assumes X has size d x tau, h0 has size m x 1, etc
 def ComputeGradsWithTorch(X, y, h0, RNN):
