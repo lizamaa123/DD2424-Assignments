@@ -1,3 +1,5 @@
+import numpy as np
+
 # !!!
 # EXERCISE 1
 # !!!
@@ -12,6 +14,9 @@ fid.close()
 unique_chars = list(set(book_data))
 
 K = len(unique_chars)
+m = 100 
+eta = 0.001
+seq_length=25
 
 # help taken from: https://www.geeksforgeeks.org/python/adding-items-to-a-dictionary-in-a-loop-in-python/
 
@@ -26,3 +31,14 @@ for char, i in enumerate(unique_chars):
 
 print(f"Number of unique characters, K={K}")
 
+RNN = {}
+rng = np.random.default_rng(42)
+
+b = np.zeros((m, 1)) 
+c = np.zeros((K, 1)) 
+
+RNN['b'] = [b]
+RNN['c'] = [c]
+RNN['U'] = (1/np.sqrt(2*K))*rng.standard_normal(size = (m, K))
+RNN['W'] = (1/np.sqrt(2*m))*rng.standard_normal(size = (m, m))
+RNN['V'] = (1/np.sqrt(m))*rng.standard_normal(size = (K, m))
