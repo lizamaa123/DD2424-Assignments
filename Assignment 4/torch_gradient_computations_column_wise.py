@@ -24,12 +24,14 @@ def ComputeGradsWithTorch(X, y, h0, RNN):
     for t in range(tau):
 
         #### BEGIN your code ######
-
-        # Code to apply the RNN to hprev and Xt[:, t:t+1] to compute the hidden scores "Hs" at timestep t
-        # (ie equations (1,2) in the assignment instructions)
-        # Store results in Hs
-
-        # Don't forget to update hprev!
+        xt = Xt[:, t:t+1]
+        
+        # Eq. 1 and 2
+        a_t = torch.matmul(torch_network['W'], hprev) + torch.matmul(torch_network['U'], xt) + torch_network['b']
+        h_t = apply_tanh(a_t)
+        
+        Hs[:, t:t+1] = h_t
+        hprev = h_t
         
         #### END of your code ######            
 
