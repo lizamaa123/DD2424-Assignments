@@ -265,7 +265,7 @@ for step in range(1, steps + 1):
         step_history.append(step)
         smooth_loss_history.append(smooth_loss)
 
-        # Capture the exact weights at step 80,000!
+    # Capture the exact weights at step 80,000
     if step == 80000:
         RNN_80k = {k: np.copy(v) for k, v in RNN.items()}
     
