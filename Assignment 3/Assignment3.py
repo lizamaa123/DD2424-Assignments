@@ -58,7 +58,7 @@ for i in range(n):
 
                 conv_outputs[row, col, j, i] = np.sum(np.multiply(sub_patch, filter_k))
 
-# If printed error is zero or very small that means it matches the ground truth, implementation is correct
+# If printed error is zero or very small that means it matches the ground truth = implementation is correct
 difference = np.sum(np.abs(conv_outputs - conv_outputs_true))
 print(f"Error: {difference}")
 
@@ -187,14 +187,12 @@ print(f"Error in conv_flat: {diff_conv}")
 print(f"Error in x1: {diff_X1}")
 print(f"Error in P: {diff_P}")
 
-"""
 # DEBUGGING BACKWARD PASS
 grads_debug = BackwardPass(MX, Y, fp_data_debug, network)
 
 diff_grad_F = np.sum(np.abs(grads_debug["F"] - grad_Fs_flat))
 
 print(f"Error in filter grads: {diff_grad_F}")
-"""
 
 # SANITY CHECK WITH TORCH
 # First 5 images
@@ -235,8 +233,6 @@ def LoadBatch(filename):
     return X, Y, y
 
 # Loading all 5 batches (test batch remains the same)
-print("Loading 5 training batches for Searches")
-
 X1, Y1, y1 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_1")
 X2, Y2, y2 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_2")
 X3, Y3, y3 = LoadBatch("Assignment 1/Datasets/cifar-10-batches-py/data_batch_3")
@@ -298,35 +294,6 @@ def ComputeLoss(P, y):
     
     return L
 
-# helper function to avoid repetition. Plots cost,loss and accuracy
-def plot_results(metrics, lam, filename):
-    steps = metrics["update_steps"]
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 4))
-
-    # Loss Plot
-    ax1.plot(steps, metrics["train_loss"], label="training", color="green")
-    ax1.plot(steps, metrics["val_loss"], label="validation", color="red")
-    ax1.set_title(f"Loss plot (lam={lam})")
-    ax1.set_xlabel("update step")
-    ax1.set_ylabel("loss")
-    ax1.set_xlim(left=0)
-    ax1.spines[['right', 'top']].set_visible(False)
-    ax1.legend()
-
-    # Accuracy Plot
-    ax2.plot(steps, metrics["train_acc"], label="training", color="green")
-    ax2.plot(steps, metrics["val_acc"], label="validation", color="red")
-    ax2.set_title(f"Accuracy plot (lam={lam})")
-    ax2.set_xlabel("update step")
-    ax2.set_ylabel("accuracy")
-    ax2.set_xlim(left=0)
-    ax2.spines[['right', 'top']].set_visible(False)
-    ax2.legend()
-
-    plt.tight_layout()
-    plt.savefig(filename)
-    plt.show()
-
 def MiniBatchGD(MX_train, Y_train, MX_val, Y_val, GDparams, network, lam, rng):
     trained_net = copy.deepcopy(network)
     
@@ -379,24 +346,18 @@ def MiniBatchGD(MX_train, Y_train, MX_val, Y_val, GDparams, network, lam, rng):
                 y_train_eval = y_train[:chunk_size]
 
                 P_train, _ = ForwardPass(MX_train_eval, trained_net)
-                #train_acc = ComputeAccuracy(P_train, y_train)
                 train_loss = ComputeLoss(P_train, y_train_eval)
                 
                 #  Evaluate validation data 
                 P_val, _ = ForwardPass(MX_val, trained_net)
-                #val_acc = ComputeAccuracy(P_val, y_val)
                 val_loss = ComputeLoss(P_val, y_val)
                 
                 # Calculate Cost (Loss + L2 Regularization for both layers -> from figure b) in ass.)
                 l2_reg = lam * (np.sum(trained_net["W"][0]**2) + np.sum(trained_net["W"][1]**2))
                 
                 eval["train_loss"].append(train_loss)
-                #eval["train_cost"].append(train_loss + l2_reg)
-                #eval["train_acc"].append(train_acc)
                 
                 eval["val_loss"].append(val_loss)
-                #eval["val_cost"].append(val_loss + l2_reg)
-                #eval["val_acc"].append(val_acc)
                 
                 eval["update_steps"].append(t)
                 
@@ -465,7 +426,23 @@ def ComputeMX(X, f):
 
                 l += 1
     return MX
-"""
+
+# helper function to avoid repetition, plots loss 
+def plot_loss(metrics, lam, filename):
+    steps = metrics["update_steps"]
+    plt.figure(figsize=(8, 5))
+    plt.plot(steps, metrics["train_loss"], label="training loss", color="green")
+    plt.plot(steps, metrics["val_loss"], label="validation loss", color="red")
+    plt.title(f"Loss plot (lam={lam})")
+    plt.xlabel("update step")
+    plt.ylabel("loss")
+    plt.xlim(left=0)
+    plt.gca().spines[['right', 'top']].set_visible(False)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
 # 3 cycles = 6 * n_s = 4800 update steps
 # 4800 steps / (49k/100) batches per epoch = int(9.8) = 10 epochs
 param_settings = [
@@ -509,13 +486,14 @@ for i, exp in enumerate(param_settings):
 
     print(f"!!!FINAL TEST ACCURACY!!!: {test_acc:.2f}%")
 
-    #plot_results(eval, lam, f"Ass3_Ex3_f{f}_nf{nf}.png")
+    plot_loss(eval, lam, f"Ass3_Ex3_f{f}_nf{nf}.png")
 
     # Storing data for bar charts
     arch_labels.append(f"f={f}\nnf={nf}")
     final_accuracies.append(test_acc)
     training_times.append(training_time)
 
+# BAR CHARTS for test/train computation times
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 # Test Accuracy
 ax1.bar(arch_labels, final_accuracies)
@@ -531,25 +509,10 @@ ax2.set_ylabel("Time (seconds)")
 plt.tight_layout()
 plt.savefig("Ass3_Ex3_BarCharts.png")
 plt.show()
-"""
-def plot_loss(metrics, lam, filename):
-    steps = metrics["update_steps"]
-    plt.figure(figsize=(8, 5))
-    plt.plot(steps, metrics["train_loss"], label="training loss", color="green")
-    plt.plot(steps, metrics["val_loss"], label="validation loss", color="red")
-    plt.title(f"Loss plot (lam={lam})")
-    plt.xlabel("update step")
-    plt.ylabel("loss")
-    plt.xlim(left=0)
-    plt.gca().spines[['right', 'top']].set_visible(False)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(filename)
-    plt.close()
 
 # 3 cycles with doubling lengths (2*800=1600) + (2*1600=3200) + (3200*2=6400) = 11200
 # 11200 steps / 490 batches per epoch = int(22.85) = 23 epochs
-"""
+
 param_settings = [
     {"f": 4, "nf": 10, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
     {"f": 8, "nf": 40, "nh": 50, "lam": 0.003, "n_cycles": 3, "n_batch": 100, "eta_min": 1e-5, "eta_max": 1e-1, "n_s": 800, "n_epochs": 23},
@@ -582,9 +545,8 @@ for i, exp in enumerate(param_settings):
 
     print(f"!!!FINAL TEST ACCURACY: {test_acc:.2f}%!!!")
 
-    # Generate and save the requested Loss Curve
     plot_loss(eval, lam, f"Ass3_LongRun_f{f}_nf{nf}.png")
-"""
+
 # !!!
 # EXERCISE 4
 # !!!
