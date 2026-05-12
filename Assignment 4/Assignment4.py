@@ -14,11 +14,6 @@ book_data = fid.read()
 fid.close()
 unique_chars = list(set(book_data))
 
-K = len(unique_chars)
-m = 100 
-eta = 0.001
-seq_length=25
-
 # help taken from: https://www.geeksforgeeks.org/python/adding-items-to-a-dictionary-in-a-loop-in-python/
 
 # Initalize empty dictionaries
@@ -29,6 +24,15 @@ ind_to_char = {}
 for i, char in enumerate(unique_chars): 
     char_to_ind[char] = i
     ind_to_char[i] = char
+
+# !!!
+# EXERCISE 2
+# !!!
+
+K = len(unique_chars)
+m = 100 
+eta = 0.001
+seq_length=25
 
 print(f"Number of unique characters, K={K}")
 
@@ -46,6 +50,10 @@ def Initialization(m, K, seed=42):
     RNN['V'] = (1/np.sqrt(m))*rng.standard_normal(size = (K, m))
 
     return RNN
+
+# !!!
+# EXERCISE 3
+# !!!
 
 def seqSynth(RNN, h0, x0, n):
     b = RNN['b']
@@ -71,6 +79,7 @@ def seqSynth(RNN, h0, x0, n):
         # sampling the next character
         cp = np.cumsum(p, axis=0)
         local_rng = np.random.default_rng() 
+        # randm draw from uniform dist.
         a_random = local_rng.uniform(size=1)
         ii = np.argmax(cp - a_random > 0)
 
@@ -82,6 +91,10 @@ def seqSynth(RNN, h0, x0, n):
         x[ii, 0] = 1
 
     return Y
+
+# !!!
+# EXERCISE 4
+# !!!
 
 # Back-propogation (forward + backward pass)
 def forwardPass(X, Y, RNN, h0): 
@@ -165,11 +178,19 @@ def backwardPass(RNN, X, Y, P, H, A, h0):
         g = (p - y) / n
         
         grads['V'] += np.dot(g, h.T)
+
+        # gradient of h and a
         grad_h = np.dot(V.T, g) + np.dot(W.T, grad_a_next)
         grad_a = grad_h * (1 - np.tanh(a)**2)
+        
         grads['W'] += np.dot(grad_a, h_prev.T)
         grads['U'] += np.dot(grad_a, x.T)
+
+        # grad L_o = g, grad o_c = 1
+        # grad L_c = grad L_o * grad o_c = g 
         grads['c'] += g
+        #grad L_a = grad_a, grad a_b = 1
+        # grad L_b = grad L_a * grad a_b = grad_a 
         grads['b'] += grad_a
 
         grad_a_next = grad_a
@@ -207,6 +228,10 @@ pytorch_grads = ComputeGradsWithTorch(X, y_int, h0_check, RNN_check)
 for key in my_grads.keys():
     diff = np.max(np.abs(my_grads[key] - pytorch_grads[key]))
     print(f"Maximum difference for {key}: {diff}")
+
+# !!!
+# EXERCISE 5
+# !!!
 
 RNN = Initialization(m, K)
 
@@ -260,12 +285,12 @@ for step in range(1, steps + 1):
     # smooth loss
     smooth_loss = 0.999 * smooth_loss + 0.001 * loss
 
-    # Save loss history for the graph every 100 steps
+    # save loss history for the graph every 100 steps
     if step % 100 == 0:
         step_history.append(step)
         smooth_loss_history.append(smooth_loss)
 
-    # Capture the exact weights at step 80,000
+    # capture the exact weights at step 80 000
     if step == 80000:
         RNN_80k = {k: np.copy(v) for k, v in RNN.items()}
     
@@ -276,7 +301,7 @@ for step in range(1, steps + 1):
         x0 = X[:, 0:1] 
         Y_synth = seqSynth(RNN, hprev, x0, 200)
         
-        # Re-convert to text 
+        # re-convert to text 
         synth_text = ""
         for t in range(Y_synth.shape[1]):
             char_index = np.argmax(Y_synth[:, t])
@@ -302,7 +327,7 @@ plt.show()
 h0_final = np.zeros((m, 1))
 x0_final = onehotChar(book_data[0:1], char_to_ind, K)
 
-# Pass RNN_80k into the synthesis function instead of the final 100k RNN
+# passing RNN_80k into synthesis f. instead of final 100k RNN
 Y_synth_final = seqSynth(RNN_80k, h0_final, x0_final, 1000)
 
 final_text = ""
